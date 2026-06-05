@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapPin, Loader2 } from "lucide-react";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet.heat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import BottomNav from "@/components/BottomNav";
@@ -37,7 +39,10 @@ interface PrefeituraOption {
 interface VisitPointRow {
   imovelid: string | null;
   prefeituraid: string | null;
+  focos: number | null;
 }
+
+type MapMode = "points" | "heat";
 
 const riskMeta: Record<string, { label: string; color: string; fill: string }> = {
   baixo: { label: "Baixo", color: "#15803d", fill: "#22c55e" },
@@ -76,13 +81,54 @@ const MapViewport = ({ points, selected }: { points: Imovel[]; selected: Imovel 
   return null;
 };
 
+const HeatMapLayer = ({ points }: { points: [number, number, number][] }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (points.length === 0) return;
+
+    const heatLayer = (L as typeof L & {
+      heatLayer: (
+        latlngs: [number, number, number][],
+        options?: {
+          radius?: number;
+          blur?: number;
+          maxZoom?: number;
+          minOpacity?: number;
+          gradient?: Record<number, string>;
+        }
+      ) => L.Layer;
+    }).heatLayer(points, {
+      radius: 30,
+      blur: 22,
+      maxZoom: 17,
+      minOpacity: 0.35,
+      gradient: {
+        0.15: "#22c55e",
+        0.45: "#f59e0b",
+        0.8: "#ef4444",
+      },
+    });
+
+    heatLayer.addTo(map);
+
+    return () => {
+      map.removeLayer(heatLayer);
+    };
+  }, [map, points]);
+
+  return null;
+};
+
 const MapPage = () => {
   const { user, perfil, prefeituraId, userProfile } = useAuth();
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
+  const [visitPoints, setVisitPoints] = useState<VisitPointRow[]>([]);
   const [cityOptions, setCityOptions] = useState<PrefeituraOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Imovel | null>(null);
   const [selectedPrefeituraId, setSelectedPrefeituraId] = useState<string>(prefeituraId ?? "all");
+  const [mapMode, setMapMode] = useState<MapMode>("points");
 
   useEffect(() => {
     if (!isAdmin(perfil) && prefeituraId) {
@@ -99,6 +145,7 @@ const MapPage = () => {
     const fetchImoveis = async () => {
       if (!user || !userProfile) {
         setImoveis([]);
+        setVisitPoints([]);
         setCityOptions([]);
         setLoading(false);
         return;
@@ -116,6 +163,7 @@ const MapPage = () => {
       if (usersError || !usersData) {
         console.error(usersError);
         setImoveis([]);
+        setVisitPoints([]);
         setLoading(false);
         return;
       }
@@ -160,6 +208,7 @@ const MapPage = () => {
 
       if (scopedAgentIds.length === 0) {
         setImoveis([]);
+        setVisitPoints([]);
         setCityOptions([]);
         setLoading(false);
         return;
@@ -167,7 +216,7 @@ const MapPage = () => {
 
       let visitsQuery = supabase
         .from("visitas")
-        .select("imovelid, prefeituraid")
+        .select("imovelid, prefeituraid, focos")
         .in("agenteid", scopedAgentIds);
 
       if (!isAdmin(perfil) && prefeituraId) {
@@ -178,6 +227,7 @@ const MapPage = () => {
       if (visitsError || !visitsData) {
         console.error(visitsError);
         setImoveis([]);
+        setVisitPoints([]);
         setCityOptions([]);
         setLoading(false);
         return;
@@ -224,9 +274,12 @@ const MapPage = () => {
           ? scopedVisits.filter((visit) => visit.prefeituraid === effectivePrefeituraId)
           : scopedVisits;
 
+      setVisitPoints(filteredVisits);
+
       const imovelIds = [...new Set(filteredVisits.map((visit) => visit.imovelid).filter(Boolean))];
       if (imovelIds.length === 0) {
         setImoveis([]);
+        setVisitPoints([]);
         setLoading(false);
         return;
       }
@@ -241,6 +294,7 @@ const MapPage = () => {
       } else {
         console.error(error);
         setImoveis([]);
+        setVisitPoints([]);
       }
 
       setLoading(false);
@@ -268,6 +322,27 @@ const MapPage = () => {
     [withCoords]
   );
 
+  const heatPoints = useMemo(() => {
+    const weightsByImovel = new Map<string, number>();
+
+    for (const visit of visitPoints) {
+      if (!visit.imovelid) continue;
+      const currentWeight = weightsByImovel.get(visit.imovelid) ?? 0;
+      const visitWeight = Math.max(1, Number(visit.focos ?? 0) + 1);
+      weightsByImovel.set(visit.imovelid, currentWeight + visitWeight);
+    }
+
+    const weightedPoints: [number, number, number][] = [];
+
+    for (const imovel of withCoords) {
+      const riskWeight = imovel.risco === "alto" ? 3 : imovel.risco === "medio" ? 2 : 1;
+      const weight = (weightsByImovel.get(imovel.id) ?? 1) + riskWeight;
+      weightedPoints.push([imovel.latitude, imovel.longitude, weight]);
+    }
+
+    return weightedPoints;
+  }, [visitPoints, withCoords]);
+
   const cityFilterDisabled = !isAdmin(perfil) || cityOptions.length <= 1;
 
   return (
@@ -276,23 +351,49 @@ const MapPage = () => {
         <h1 className="text-lg font-bold">Mapa de Risco</h1>
         <p className="text-xs text-muted-foreground">{withCoords.length} localizacoes disponiveis</p>
         {cityOptions.length > 0 && (
-          <div className="mt-3 max-w-sm space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Cidade</p>
-            <Select value={selectedPrefeituraId} onValueChange={setSelectedPrefeituraId} disabled={cityFilterDisabled}>
-              <SelectTrigger className="h-11 bg-background">
-                <SelectValue placeholder="Selecione a cidade" />
-              </SelectTrigger>
-              <SelectContent>
-                {isAdmin(perfil) && cityOptions.length > 1 && (
-                  <SelectItem value="all">Todas as cidades</SelectItem>
-                )}
-                {cityOptions.map((city) => (
-                  <SelectItem key={city.id} value={city.id}>
-                    {city.municipio || city.nome || "Sem cidade"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-sm flex-1 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Cidade</p>
+              <Select value={selectedPrefeituraId} onValueChange={setSelectedPrefeituraId} disabled={cityFilterDisabled}>
+                <SelectTrigger className="h-11 bg-background">
+                  <SelectValue placeholder="Selecione a cidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {isAdmin(perfil) && cityOptions.length > 1 && (
+                    <SelectItem value="all">Todas as cidades</SelectItem>
+                  )}
+                  {cityOptions.map((city) => (
+                    <SelectItem key={city.id} value={city.id}>
+                      {city.municipio || city.nome || "Sem cidade"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Visualizacao</p>
+              <div className="inline-flex rounded-xl border border-border bg-background p-1">
+                <button
+                  type="button"
+                  onClick={() => setMapMode("points")}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    mapMode === "points" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  Pontos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapMode("heat")}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    mapMode === "heat" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  Calor
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </header>
@@ -345,56 +446,76 @@ const MapPage = () => {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 <MapViewport points={withCoords} selected={selected} />
-
-                {withCoords.map((imovel) => {
-                  const meta = riskMeta[imovel.risco] ?? riskMeta.fechado;
-                  return (
-                    <CircleMarker
-                      key={imovel.id}
-                      center={[imovel.latitude, imovel.longitude]}
-                      radius={selected?.id === imovel.id ? 13 : 10}
-                      pathOptions={{
-                        color: meta.color,
-                        fillColor: meta.fill,
-                        fillOpacity: 0.85,
-                        weight: selected?.id === imovel.id ? 4 : 2,
-                      }}
-                      eventHandlers={{
-                        click: () => setSelected(imovel),
-                      }}
-                    >
-                      <Popup>
-                        <div className="space-y-1">
-                          <p className="font-semibold">
-                            {imovel.logradouro}, {imovel.numero}
-                          </p>
-                          <p className="text-xs text-slate-600">{imovel.bairro}</p>
-                          <p className="text-xs">
-                            Risco: <span className="font-semibold">{meta.label}</span>
-                          </p>
-                        </div>
-                      </Popup>
-                    </CircleMarker>
-                  );
-                })}
+                {mapMode === "heat" ? (
+                  <HeatMapLayer points={heatPoints} />
+                ) : (
+                  withCoords.map((imovel) => {
+                    const meta = riskMeta[imovel.risco] ?? riskMeta.fechado;
+                    return (
+                      <CircleMarker
+                        key={imovel.id}
+                        center={[imovel.latitude, imovel.longitude]}
+                        radius={selected?.id === imovel.id ? 13 : 10}
+                        pathOptions={{
+                          color: meta.color,
+                          fillColor: meta.fill,
+                          fillOpacity: 0.85,
+                          weight: selected?.id === imovel.id ? 4 : 2,
+                        }}
+                        eventHandlers={{
+                          click: () => setSelected(imovel),
+                        }}
+                      >
+                        <Popup>
+                          <div className="space-y-1">
+                            <p className="font-semibold">
+                              {imovel.logradouro}, {imovel.numero}
+                            </p>
+                            <p className="text-xs text-slate-600">{imovel.bairro}</p>
+                            <p className="text-xs">
+                              Risco: <span className="font-semibold">{meta.label}</span>
+                            </p>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    );
+                  })
+                )}
               </MapContainer>
             </div>
 
             <div className="space-y-3">
               <div className="rounded-xl border border-border bg-card p-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Legenda
+                  {mapMode === "heat" ? "Intensidade" : "Legenda"}
                 </h2>
                 <div className="mt-3 space-y-2 text-sm">
-                  {Object.entries(riskMeta).map(([key, meta]) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <span
-                        className="h-3.5 w-3.5 rounded-full"
-                        style={{ backgroundColor: meta.fill, border: `2px solid ${meta.color}` }}
-                      />
-                      <span>{meta.label}</span>
-                    </div>
-                  ))}
+                  {mapMode === "heat" ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="h-3.5 w-3.5 rounded-full bg-[#22c55e]" />
+                        <span>Baixa concentracao</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-3.5 w-3.5 rounded-full bg-[#f59e0b]" />
+                        <span>Media concentracao</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-3.5 w-3.5 rounded-full bg-[#ef4444]" />
+                        <span>Alta concentracao</span>
+                      </div>
+                    </>
+                  ) : (
+                    Object.entries(riskMeta).map(([key, meta]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <span
+                          className="h-3.5 w-3.5 rounded-full"
+                          style={{ backgroundColor: meta.fill, border: `2px solid ${meta.color}` }}
+                        />
+                        <span>{meta.label}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
