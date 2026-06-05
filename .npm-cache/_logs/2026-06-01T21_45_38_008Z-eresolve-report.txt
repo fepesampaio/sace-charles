@@ -1,0 +1,16 @@
+'Log files:
+C:\Users\Felipe\MASS\Agente em Campo\.npm-cache\_logs\2026-06-01T21_45_38_008Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: vite_react_shadcn_ts@0.0.0
+Found: react@18.3.1
+node_modules/react
+  react@"^18.3.1" from the root project
+
+Could not resolve dependency:
+peer react@"^19.0.0" from react-leaflet@5.0.0
+node_modules/react-leaflet
+  react-leaflet@"*" from the root project
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
