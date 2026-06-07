@@ -30,6 +30,13 @@ const emptyCriadouros: Record<string, number> = {
   D2: 0,
 };
 
+const sanitizeFileName = (fileName: string) =>
+  fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "");
+
 interface ExistingPhoto {
   id: string;
   url: string;
@@ -250,7 +257,8 @@ const NewVisit = () => {
 
   const uploadPhotos = async (targetVisitId: string) => {
     for (const photo of photos) {
-      const fileName = `${targetVisitId}/${Date.now()}_${photo.name}`;
+      const safeName = sanitizeFileName(photo.name);
+      const fileName = `${targetVisitId}/${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage.from("fotos-visitas").upload(fileName, photo);
 
       if (uploadError) {
