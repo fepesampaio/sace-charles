@@ -208,16 +208,10 @@ const Summary = () => {
           )
           .map((row) => row.id);
       } else if (isGestor(perfil)) {
-        const supervisorIds = targetRows
-          .filter((row) => normalizeRole(row.perfil) === "supervisor" && row.gestor_id === user.id)
-          .map((row) => row.id);
-
         scopedAgentIds = targetRows
           .filter(
             (row) =>
               normalizeRole(row.perfil) === "agente" &&
-              (row.gestor_id === user.id ||
-                (row.supervisor_id ? supervisorIds.includes(row.supervisor_id) : false)) &&
               (selectedRegion === "all" || row.regiao === selectedRegion)
           )
           .map((row) => row.id);

@@ -193,16 +193,11 @@ const Dashboard = () => {
       }
 
       if (isGestor(perfil)) {
-        const supervisorIds = rows
-          .filter((row) => normalizeRole(row.perfil) === "supervisor" && row.gestor_id === user.id)
-          .map((row) => row.id);
-
         setScopedAgentIds(
           rows
             .filter(
               (row) =>
-                normalizeRole(row.perfil) === "agente" &&
-                (row.gestor_id === user.id || (row.supervisor_id ? supervisorIds.includes(row.supervisor_id) : false))
+                normalizeRole(row.perfil) === "agente"
             )
             .map((row) => row.id)
         );
