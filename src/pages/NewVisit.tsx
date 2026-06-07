@@ -255,15 +255,20 @@ const NewVisit = () => {
 
       if (uploadError) {
         console.error("Photo upload error:", uploadError);
-        continue;
+        throw new Error(`Erro ao enviar foto: ${photo.name}`);
       }
 
       const { data: urlData } = supabase.storage.from("fotos-visitas").getPublicUrl(fileName);
 
-      await supabase.from("fotos").insert({
+      const { error: photoInsertError } = await supabase.from("fotos").insert({
         visitaid: targetVisitId,
         url: urlData.publicUrl,
       });
+
+      if (photoInsertError) {
+        console.error("Photo metadata insert error:", photoInsertError);
+        throw new Error(`Erro ao salvar referencia da foto: ${photo.name}`);
+      }
     }
   };
 
