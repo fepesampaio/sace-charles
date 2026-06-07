@@ -81,7 +81,13 @@ const MapViewport = ({ points, selected }: { points: Imovel[]; selected: Imovel 
   return null;
 };
 
-const HeatMapLayer = ({ points }: { points: [number, number, number][] }) => {
+const HeatMapLayer = ({
+  points,
+  gradient,
+}: {
+  points: [number, number, number][];
+  gradient: Record<number, string>;
+}) => {
   const map = useMap();
 
   useEffect(() => {
@@ -94,20 +100,18 @@ const HeatMapLayer = ({ points }: { points: [number, number, number][] }) => {
           radius?: number;
           blur?: number;
           maxZoom?: number;
+          max?: number;
           minOpacity?: number;
           gradient?: Record<number, string>;
         }
       ) => L.Layer;
     }).heatLayer(points, {
-      radius: 30,
-      blur: 22,
+      radius: 24,
+      blur: 18,
       maxZoom: 17,
-      minOpacity: 0.35,
-      gradient: {
-        0.15: "#22c55e",
-        0.45: "#f59e0b",
-        0.8: "#ef4444",
-      },
+      max: 1,
+      minOpacity: 0.14,
+      gradient,
     });
 
     heatLayer.addTo(map);
@@ -115,7 +119,7 @@ const HeatMapLayer = ({ points }: { points: [number, number, number][] }) => {
     return () => {
       map.removeLayer(heatLayer);
     };
-  }, [map, points]);
+  }, [gradient, map, points]);
 
   return null;
 };
@@ -323,21 +327,48 @@ const MapPage = () => {
   );
 
   const heatPoints = useMemo(() => {
+    const riskByImovel = new Map<string, string>();
     const weightsByImovel = new Map<string, number>();
+
+    for (const imovel of withCoords) {
+      riskByImovel.set(imovel.id, imovel.risco);
+    }
 
     for (const visit of visitPoints) {
       if (!visit.imovelid) continue;
       const currentWeight = weightsByImovel.get(visit.imovelid) ?? 0;
-      const visitWeight = Math.max(1, Number(visit.focos ?? 0) + 1);
-      weightsByImovel.set(visit.imovelid, currentWeight + visitWeight);
+      const focos = Number(visit.focos ?? 0);
+
+      let visitWeight = 0.28;
+      if (focos >= 1) visitWeight = 0.4;
+      if (focos >= 3) visitWeight = 0.65;
+      if (focos >= 5) visitWeight = 1;
+
+      weightsByImovel.set(visit.imovelid, Math.max(currentWeight, visitWeight));
     }
 
-    const weightedPoints: [number, number, number][] = [];
+    const weightedPoints = {
+      baixo: [] as [number, number, number][],
+      medio: [] as [number, number, number][],
+      alto: [] as [number, number, number][],
+    };
 
     for (const imovel of withCoords) {
-      const riskWeight = imovel.risco === "alto" ? 3 : imovel.risco === "medio" ? 2 : 1;
-      const weight = (weightsByImovel.get(imovel.id) ?? 1) + riskWeight;
-      weightedPoints.push([imovel.latitude, imovel.longitude, weight]);
+      const risk = riskByImovel.get(imovel.id) ?? "baixo";
+      let riskWeight = 0.32;
+      if (risk === "medio") riskWeight = 0.58;
+      if (risk === "alto") riskWeight = 0.9;
+
+      const visitWeight = weightsByImovel.get(imovel.id) ?? 0.28;
+      const weight = Math.min(1, Math.max(visitWeight, riskWeight));
+
+      if (risk === "alto") {
+        weightedPoints.alto.push([imovel.latitude, imovel.longitude, weight]);
+      } else if (risk === "medio") {
+        weightedPoints.medio.push([imovel.latitude, imovel.longitude, weight]);
+      } else {
+        weightedPoints.baixo.push([imovel.latitude, imovel.longitude, weight]);
+      }
     }
 
     return weightedPoints;
@@ -447,7 +478,35 @@ const MapPage = () => {
                 />
                 <MapViewport points={withCoords} selected={selected} />
                 {mapMode === "heat" ? (
-                  <HeatMapLayer points={heatPoints} />
+                  <>
+                    <HeatMapLayer
+                      points={heatPoints.baixo}
+                      gradient={{
+                        0.18: "#dcfce7",
+                        0.45: "#86efac",
+                        0.72: "#4ade80",
+                        1: "#16a34a",
+                      }}
+                    />
+                    <HeatMapLayer
+                      points={heatPoints.medio}
+                      gradient={{
+                        0.18: "#fef3c7",
+                        0.45: "#fde68a",
+                        0.72: "#fbbf24",
+                        1: "#d97706",
+                      }}
+                    />
+                    <HeatMapLayer
+                      points={heatPoints.alto}
+                      gradient={{
+                        0.18: "#fee2e2",
+                        0.45: "#fca5a5",
+                        0.72: "#f87171",
+                        1: "#dc2626",
+                      }}
+                    />
+                  </>
                 ) : (
                   withCoords.map((imovel) => {
                     const meta = riskMeta[imovel.risco] ?? riskMeta.fechado;
