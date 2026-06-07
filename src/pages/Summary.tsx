@@ -196,6 +196,7 @@ const Summary = () => {
       }
 
       let scopedAgentIds: string[] = [];
+      const gestorScopedByCity = isGestor(perfil) && Boolean(prefeituraId) && selectedRegion === "all";
 
       if (normalizeRole(perfil) === "agente") {
         scopedAgentIds = [user.id];
@@ -208,13 +209,15 @@ const Summary = () => {
           )
           .map((row) => row.id);
       } else if (isGestor(perfil)) {
-        scopedAgentIds = targetRows
-          .filter(
-            (row) =>
-              normalizeRole(row.perfil) === "agente" &&
-              (selectedRegion === "all" || row.regiao === selectedRegion)
-          )
-          .map((row) => row.id);
+        if (!gestorScopedByCity) {
+          scopedAgentIds = targetRows
+            .filter(
+              (row) =>
+                normalizeRole(row.perfil) === "agente" &&
+                (selectedRegion === "all" || row.regiao === selectedRegion)
+            )
+            .map((row) => row.id);
+        }
       } else if (isSupervisor(perfil)) {
         scopedAgentIds = targetRows
           .filter(
@@ -230,7 +233,7 @@ const Summary = () => {
           .map((row) => row.id);
       }
 
-      if (scopedAgentIds.length === 0) {
+      if (!gestorScopedByCity && scopedAgentIds.length === 0) {
         setVisits([]);
         setLoading(false);
         return;
@@ -261,10 +264,13 @@ const Summary = () => {
             risco
           )
         `)
-        .in("agenteid", scopedAgentIds)
         .gte("datahora", `${range.start}T00:00:00`)
         .lte("datahora", `${range.end}T23:59:59`)
         .order("datahora", { ascending: false });
+
+      if (!gestorScopedByCity) {
+        query = query.in("agenteid", scopedAgentIds);
+      }
 
       if (!isAdmin(perfil) && prefeituraId) {
         query = query.eq("prefeituraid", prefeituraId);

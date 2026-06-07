@@ -234,7 +234,8 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchVisits = async () => {
       if (!user || !filter) return;
-      if (scopedAgentIds.length === 0) {
+      const gestorScopedByCity = isGestor(perfil) && Boolean(prefeituraId);
+      if (!gestorScopedByCity && scopedAgentIds.length === 0) {
         setVisits([]);
         setLoading(false);
         return;
@@ -262,10 +263,13 @@ const Dashboard = () => {
             risco
           )
         `)
-        .in("agenteid", scopedAgentIds)
         .gte("datahora", `${range.start}T00:00:00`)
         .lte("datahora", `${range.end}T23:59:59`)
         .order("datahora", { ascending: false });
+
+      if (!gestorScopedByCity) {
+        query = query.in("agenteid", scopedAgentIds);
+      }
 
       if (!isAdmin(perfil) && prefeituraId) {
         query = query.eq("prefeituraid", prefeituraId);

@@ -174,6 +174,7 @@ const MapPage = () => {
 
       const rows = (usersData as ScopedUserRow[]) ?? [];
       let scopedAgentIds: string[] = [];
+      const gestorScopedByCity = isGestor(perfil) && Boolean(prefeituraId);
 
       if (normalizeRole(perfil) === "agente") {
         scopedAgentIds = [user.id];
@@ -182,11 +183,13 @@ const MapPage = () => {
           .filter((row) => normalizeRole(row.perfil) === "agente")
           .map((row) => row.id);
       } else if (isGestor(perfil)) {
-        scopedAgentIds = rows
-          .filter(
-            (row) => normalizeRole(row.perfil) === "agente"
-          )
-          .map((row) => row.id);
+        if (!gestorScopedByCity) {
+          scopedAgentIds = rows
+            .filter(
+              (row) => normalizeRole(row.perfil) === "agente"
+            )
+            .map((row) => row.id);
+        }
       } else if (isSupervisor(perfil)) {
         scopedAgentIds = rows
           .filter(
@@ -205,7 +208,7 @@ const MapPage = () => {
           .map((row) => row.id);
       }
 
-      if (scopedAgentIds.length === 0) {
+      if (!gestorScopedByCity && scopedAgentIds.length === 0) {
         setImoveis([]);
         setVisitPoints([]);
         setCityOptions([]);
@@ -215,8 +218,11 @@ const MapPage = () => {
 
       let visitsQuery = supabase
         .from("visitas")
-        .select("imovelid, prefeituraid, focos")
-        .in("agenteid", scopedAgentIds);
+        .select("imovelid, prefeituraid, focos");
+
+      if (!gestorScopedByCity) {
+        visitsQuery = visitsQuery.in("agenteid", scopedAgentIds);
+      }
 
       if (!isAdmin(perfil) && prefeituraId) {
         visitsQuery = visitsQuery.eq("prefeituraid", prefeituraId);
