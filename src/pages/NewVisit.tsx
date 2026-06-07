@@ -30,6 +30,11 @@ const emptyCriadouros: Record<string, number> = {
   D2: 0,
 };
 
+interface ExistingPhoto {
+  id: string;
+  url: string;
+}
+
 const NewVisit = () => {
   const navigate = useNavigate();
   const { visitId } = useParams();
@@ -74,6 +79,7 @@ const NewVisit = () => {
   const [resultado, setResultado] = useState("concluida");
   const [observacoes, setObservacoes] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
+  const [existingPhotos, setExistingPhotos] = useState<ExistingPhoto[]>([]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -138,6 +144,10 @@ const NewVisit = () => {
           criadouros,
           tratamentos,
           imovelid,
+          fotos (
+            id,
+            url
+          ),
           imoveis (
             id,
             logradouro,
@@ -197,6 +207,7 @@ const NewVisit = () => {
       setBri(!!tratamentos.bri);
       setResultado(visit.resultado ?? "concluida");
       setObservacoes(visit.observacoes ?? "");
+      setExistingPhotos((visit.fotos as ExistingPhoto[] | null) ?? []);
     };
 
     void loadVisit();
@@ -595,6 +606,11 @@ const NewVisit = () => {
         <div className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Fotos</h2>
           <div className="flex flex-wrap gap-2">
+            {existingPhotos.map((photo) => (
+              <div key={photo.id} className="relative h-20 w-20 overflow-hidden rounded-lg border border-border">
+                <img src={photo.url} alt="" className="h-full w-full object-cover" />
+              </div>
+            ))}
             {photos.map((photo, index) => (
               <div key={index} className="relative h-20 w-20 overflow-hidden rounded-lg border border-border">
                 <img src={URL.createObjectURL(photo)} alt="" className="h-full w-full object-cover" />

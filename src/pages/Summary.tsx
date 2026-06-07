@@ -119,8 +119,15 @@ const Summary = () => {
   }, [perfil, prefeituraId, selectedPrefeituraId]);
 
   useEffect(() => {
+    const isAdminAllCities = isAdmin(perfil) && selectedPrefeituraId === "all";
     const targetPrefeituraId =
       isAdmin(perfil) && selectedPrefeituraId !== "all" ? selectedPrefeituraId : prefeituraId;
+
+    if (isAdminAllCities) {
+      setSes([]);
+      setFilter((current) => current ?? { mode: "anual", ano: new Date().getFullYear() });
+      return;
+    }
 
     if (!targetPrefeituraId) {
       setSes([]);

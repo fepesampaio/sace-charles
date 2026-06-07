@@ -36,6 +36,7 @@ import {
   isSupervisor,
   normalizeRole,
 } from "@/lib/access";
+import { useMapAccess } from "@/hooks/useMapAccess";
 
 interface ScopedUserRow {
   id: string;
@@ -63,6 +64,7 @@ const Dashboard = () => {
   const [scopedAgentIds, setScopedAgentIds] = useState<string[]>([]);
   const [cityOptions, setCityOptions] = useState<PrefeituraOption[]>([]);
   const [selectedPrefeituraId, setSelectedPrefeituraId] = useState<string>(prefeituraId ?? "all");
+  const { canAccessMap } = useMapAccess(perfil, prefeituraId);
 
   const today = new Date().toLocaleDateString("pt-BR", {
     weekday: "long",
@@ -135,12 +137,19 @@ const Dashboard = () => {
   }, [perfil, prefeituraId, selectedPrefeituraId]);
 
   useEffect(() => {
+    const isAdminAllCities = isAdmin(perfil) && selectedPrefeituraId === "all";
     const targetPrefeituraId =
       isAdmin(perfil) && selectedPrefeituraId !== "all" ? selectedPrefeituraId : prefeituraId;
 
+    if (isAdminAllCities) {
+      setSes([]);
+      setFilter((current) => current ?? { mode: "anual", ano: new Date().getFullYear() });
+      return;
+    }
+
     if (!targetPrefeituraId) {
       setSes([]);
-      setFilter(null);
+      setFilter((current) => current ?? { mode: "anual", ano: new Date().getFullYear() });
       return;
     }
 
@@ -317,7 +326,7 @@ const Dashboard = () => {
   const menuItems = [
     { label: "Painel", icon: ClipboardList, path: "/dashboard" },
     { label: "Nova Visita", icon: Plus, path: "/nova-visita" },
-    { label: "Mapa", icon: MapPin, path: "/mapa" },
+    ...(canAccessMap ? [{ label: "Mapa", icon: MapPin, path: "/mapa" }] : []),
     ...(canManageUsers(perfil) ? [{ label: "Usuarios", icon: Users, path: "/usuarios" }] : []),
     ...(canManageEpidemiologicalWeeks(perfil)
       ? [{ label: "Semanas Epidemiologicas", icon: CalendarRange, path: "/semanas-epidemiologicas" }]

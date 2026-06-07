@@ -2,17 +2,19 @@ import { Home, MapPin, Plus, ClipboardList, LogOut, Users, Lock, CalendarRange }
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { canManageEpidemiologicalWeeks, canManageUsers } from "@/lib/access";
+import { useMapAccess } from "@/hooks/useMapAccess";
 
 const BottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut, perfil } = useAuth();
+  const { signOut, perfil, prefeituraId } = useAuth();
+  const { canAccessMap } = useMapAccess(perfil, prefeituraId);
 
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: Home },
     { path: "/resumo", label: "Visitas", icon: ClipboardList },
     { path: "/nova-visita", label: "Nova", icon: Plus, highlight: true },
-    { path: "/mapa", label: "Mapa", icon: MapPin },
+    ...(canAccessMap ? [{ path: "/mapa", label: "Mapa", icon: MapPin }] : []),
     ...(canManageUsers(perfil) ? [{ path: "/usuarios", label: "Usuarios", icon: Users }] : []),
     ...(canManageEpidemiologicalWeeks(perfil)
       ? [{ path: "/semanas-epidemiologicas", label: "SE", icon: CalendarRange }]

@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import BottomNav from "@/components/BottomNav";
 import { isAdmin, isGestor, isSupervisor, normalizeRole } from "@/lib/access";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useMapAccess } from "@/hooks/useMapAccess";
 import "leaflet/dist/leaflet.css";
 
 interface Imovel {
@@ -126,6 +127,7 @@ const HeatMapLayer = ({
 
 const MapPage = () => {
   const { user, perfil, prefeituraId, userProfile } = useAuth();
+  const { canAccessMap, mapAccessLoading } = useMapAccess(perfil, prefeituraId);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [visitPoints, setVisitPoints] = useState<VisitPointRow[]>([]);
   const [cityOptions, setCityOptions] = useState<PrefeituraOption[]>([]);
@@ -133,6 +135,12 @@ const MapPage = () => {
   const [selected, setSelected] = useState<Imovel | null>(null);
   const [selectedPrefeituraId, setSelectedPrefeituraId] = useState<string>(prefeituraId ?? "all");
   const [mapMode, setMapMode] = useState<MapMode>("points");
+
+  useEffect(() => {
+    if (!mapAccessLoading && !canAccessMap) {
+      setLoading(false);
+    }
+  }, [canAccessMap, mapAccessLoading]);
 
   useEffect(() => {
     if (!isAdmin(perfil) && prefeituraId) {
@@ -147,6 +155,18 @@ const MapPage = () => {
 
   useEffect(() => {
     const fetchImoveis = async () => {
+      if (mapAccessLoading) {
+        return;
+      }
+
+      if (!canAccessMap) {
+        setImoveis([]);
+        setVisitPoints([]);
+        setCityOptions([]);
+        setLoading(false);
+        return;
+      }
+
       if (!user || !userProfile) {
         setImoveis([]);
         setVisitPoints([]);
@@ -306,7 +326,7 @@ const MapPage = () => {
     };
 
     void fetchImoveis();
-  }, [perfil, prefeituraId, selectedPrefeituraId, user, userProfile]);
+  }, [canAccessMap, mapAccessLoading, perfil, prefeituraId, selectedPrefeituraId, user, userProfile]);
 
   const withCoords = useMemo(
     () =>
@@ -382,7 +402,7 @@ const MapPage = () => {
       <header className="sticky top-0 z-40 border-b border-border bg-card px-4 py-3">
         <h1 className="text-lg font-bold">Mapa de Risco</h1>
         <p className="text-xs text-muted-foreground">{withCoords.length} localizacoes disponiveis</p>
-        {cityOptions.length > 0 && (
+        {isAdmin(perfil) && cityOptions.length > 0 && (
           <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="max-w-sm flex-1 space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Cidade</p>
@@ -430,9 +450,19 @@ const MapPage = () => {
         )}
       </header>
 
-      {loading ? (
+      {mapAccessLoading || loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : !canAccessMap ? (
+        <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <MapPin className="h-8 w-8" />
+          </div>
+          <h2 className="mb-2 text-lg font-semibold">Mapa indisponivel</h2>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Seu perfil nao possui acesso ao mapa neste municipio.
+          </p>
         </div>
       ) : withCoords.length === 0 ? (
         <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
